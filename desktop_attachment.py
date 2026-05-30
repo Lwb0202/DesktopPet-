@@ -203,11 +203,6 @@ class DesktopAttachment(QObject):
     # ── FALLING ───────────────────────────────────────────────
 
     def _tick_falling(self, win_rect, pet_geo):
-        if win_rect and self._is_valid_snap_target(win_rect):
-            if self._check_snap(win_rect, pet_geo.center().x(), pet_geo.bottom()):
-                self._attach_to(win_rect)
-                return
-
         screen_bottom = self._screen_bottom()
         if pet_geo.bottom() >= screen_bottom:
             self._land()

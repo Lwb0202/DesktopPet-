@@ -289,6 +289,13 @@ class DeskMarkManager(QObject):
             m.deleteLater()
         self._marks.clear()
 
+    def clear_all(self):
+        """立即清除所有痕迹（不停止定时器）。"""
+        for m in self._marks:
+            m.hide()
+            m.deleteLater()
+        self._marks.clear()
+
     def spawn_mark(self, position: QPoint | None = None,
                    mark_type: MarkType | None = None) -> DeskMark | None:
         """手动生成一个痕迹（供外部扩展使用）。"""
@@ -306,6 +313,9 @@ class DeskMarkManager(QObject):
         idle_min = get_idle_seconds() / 60.0
 
         if idle_min < self._cfg.IDLE_MINUTES:
+            # 用户回来了 → 清除所有痕迹
+            if self._marks:
+                self.clear_all()
             return
 
         if len(self._marks) >= self._cfg.MAX_MARKS:

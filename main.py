@@ -431,6 +431,7 @@ def main():
     def _on_window_changed_with_memory(pet, old, new, mem):
         app = on_window_changed(pet, old, new)
         events.touch()  # 窗口切换 = 用户活跃
+        marks.clear_all()  # 用户活跃时清除桌面痕迹
         companion.on_window_change(new.process_name, new.hwnd)  # 追踪所有软件
         if app:
             mem.record_app(app)

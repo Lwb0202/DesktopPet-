@@ -44,7 +44,7 @@ def _gen_base_idle(fps: int = FPS_DEFAULT, frames: int = 6) -> AnimationClip:
         t = i / max(1, frames - 1) * math.pi * 2
         bounce = abs(math.sin(t)) * 6
         cy = int(SIZE * 0.55 + bounce)
-        _draw_body(p, SIZE, cy)
+        _draw_body(p, SIZE, cy, ear_t=t)
         _draw_face(p, SIZE, cy, blink=(i >= 2), smile=0.3)
         p.end()
         pixmaps.append(pm)
@@ -61,7 +61,7 @@ def _gen_base_sleep(fps: int = 8, frames: int = 8) -> AnimationClip:
         t = i / max(1, frames - 1) * math.pi * 2
         bounce = abs(math.sin(t * 0.5)) * 3
         cy = int(SIZE * 0.58 + bounce)
-        _draw_body(p, SIZE, cy)
+        _draw_body(p, SIZE, cy, ear_t=t)
         _draw_face_sleep(p, SIZE, cy)
         p.end()
         pixmaps.append(pm)
@@ -195,20 +195,27 @@ def _gen_overlay_dots(fps: int = 6, frames: int = 6) -> AnimationClip:
 #  绘制 primitives
 # ═══════════════════════════════════════════════════════════════
 
-def _draw_body(p: QPainter, w: int, cy: int) -> None:
+def _draw_body(p: QPainter, w: int, cy: int, ear_t: float = 0.0) -> None:
     p.setPen(Qt.PenStyle.NoPen)
     p.setBrush(QBrush(C_BODY))
     p.drawEllipse(QPoint(int(w * 0.5), int(cy + 10)),
                   int(w * 0.32), int(w * 0.28))
+    # 前脚（身体底部两侧）
+    paw_y = int(cy + 10 + w * 0.19)
+    for px in [int(w * 0.32), int(w * 0.68)]:
+        p.drawEllipse(QPoint(px, paw_y), int(w * 0.08), int(w * 0.06))
+    # 耳朵跟随动画轻轻摆动
+    wiggle_l = int(math.sin(ear_t * 2.5) * 2)
+    wiggle_r = int(math.cos(ear_t * 2.3) * 2)
     p.setBrush(QBrush(C_EAR))
     le = QPainterPath()
     le.moveTo(w * 0.28, w * 0.32)
-    le.lineTo(w * 0.38, w * 0.12)
+    le.lineTo(w * 0.38 + wiggle_l, w * 0.12 - 2 + abs(wiggle_l))
     le.lineTo(w * 0.48, w * 0.30)
     p.drawPath(le)
     re = QPainterPath()
     re.moveTo(w * 0.52, w * 0.30)
-    re.lineTo(w * 0.62, w * 0.12)
+    re.lineTo(w * 0.62 + wiggle_r, w * 0.12 - 2 + abs(wiggle_r))
     re.lineTo(w * 0.72, w * 0.32)
     p.drawPath(re)
 
@@ -241,6 +248,18 @@ def _draw_face(p: QPainter, w: int, cy: int, blink: bool = True,
         p.drawLine(int(w * 0.44), int(cy + 15 - mo),
                    int(w * 0.56), int(cy + 15 - mo))
 
+    # 胡须（左右各 3 根）
+    p.setPen(QPen(QColor(60, 40, 30, 140), 1.0))
+    for side in (-1, 1):
+        bx = int(w * 0.5) + side * int(w * 0.15)
+        by = int(cy + 2)
+        for j, (dy, length) in enumerate([(-2, 28), (3, 32), (8, 26)]):
+            ex = int(bx + side * length)
+            ey = int(by + dy)
+            mx = int(bx + side * length * 0.6)
+            my = int(by + dy - 3)
+            p.drawLine(bx, by, mx, my)
+            p.drawLine(mx, my, ex, ey)
 
 def _draw_eyes_open(p: QPainter, w: int, cy: int) -> None:
     eh = int(SIZE * 0.06)
@@ -281,6 +300,19 @@ def _draw_face_sleep(p: QPainter, w: int, cy: int) -> None:
     p.drawLine(int(w * 0.5), int(cy + 8),
                int(w * 0.52), int(cy + 13))
 
+    # 胡须
+    p.setPen(QPen(QColor(60, 40, 30, 120), 1.0))
+    for side in (-1, 1):
+        bx = int(w * 0.5) + side * int(w * 0.15)
+        by = int(cy + 2)
+        for j, (dy, length) in enumerate([(-4, 24), (1, 28), (6, 22)]):
+            ex = int(bx + side * length)
+            ey = int(by + dy + 2)
+            mx = int(bx + side * length * 0.6)
+            my = int(by + dy)
+            p.drawLine(bx, by, mx, my)
+            p.drawLine(mx, my, ex, ey)
+
 
 # ═══════════════════════════════════════════════════════════════
 #  New Base Layer — 特殊身体动作
@@ -299,7 +331,7 @@ def _gen_base_dance(fps: int = 10, frames: int = 10) -> AnimationClip:
         bounce = abs(math.sin(t)) * 8
         cy = int(SIZE * 0.52 + bounce)
         p.translate(int(sway), 0)
-        _draw_body(p, SIZE, cy)
+        _draw_body(p, SIZE, cy, ear_t=t)
         _draw_face(p, SIZE, cy, blink=True, smile=0.5)
         p.end()
         pixmaps.append(pm)
@@ -317,7 +349,7 @@ def _gen_base_jump_rope(fps: int = 12, frames: int = 12) -> AnimationClip:
         t = i / max(1, frames - 1) * math.pi * 2
         jump = abs(math.sin(t * 1.5)) * 18  # 高弹跳
         cy = int(SIZE * 0.42 + jump)
-        _draw_body(p, SIZE, cy)
+        _draw_body(p, SIZE, cy, ear_t=t)
         _draw_face(p, SIZE, cy, blink=True, smile=0.3)
         p.end()
         pixmaps.append(pm)
@@ -337,7 +369,7 @@ def _gen_base_spin(fps: int = 8, frames: int = 8) -> AnimationClip:
         p.translate(SIZE // 2, SIZE // 2)
         p.rotate(angle)
         p.translate(-SIZE // 2, -SIZE // 2)
-        _draw_body(p, SIZE, cy)
+        _draw_body(p, SIZE, cy, ear_t=t)
         _draw_face(p, SIZE, cy, blink=True, smile=0.3)
         p.end()
         pixmaps.append(pm)
