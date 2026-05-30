@@ -96,11 +96,26 @@ class MusicVisualizer(QWidget):
             if self._animating:
                 _log.info("音乐窗口已关闭")
                 self._stop_animation()
+            # 强制清除 SMTC 缓存，避免残留
+            self._smtc_cache_time = 0.0
+            self._smtc_cache_result = ""
+            return
+
+        # 检测位置停滞：超过 90s 没变化 → 音乐已停止
+        prev_pos = self._smtc_position
+        self._get_smtc_song()  # 刷新 _smtc_position
+        now = __import__("time").time()
+        if abs(self._smtc_position - prev_pos) < 0.1:
+            self._stall_seconds = getattr(self, "_stall_seconds", 0.0) + CHECK_INTERVAL_MS / 1000
+        else:
+            self._stall_seconds = 0.0
+        if self._stall_seconds > 90:
+            _log.info("音乐位置长时间未变化，停止显示")
+            self._stop_animation()
             return
 
         # 每轮都更新播放进度
         if title == self._last_title:
-            self._get_smtc_song()  # 只刷新 _smtc_position
             tl = getattr(self, "_lyrics_timeline", None)
             if tl:
                 pos = self._smtc_position

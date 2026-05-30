@@ -193,9 +193,6 @@ class PetWindow(QWidget):
         self._last_tick_ns = now_ns
         self._ctrl.update(min(dt_ms, 50))  # cap to avoid spiral
 
-        # 拖尾：闲逛时每帧记录位置，更新残影
-        if self._state == PetState.WANDER:
-            self._record_trail_frame()
         self._update_trails()
 
         self.update()
@@ -227,7 +224,6 @@ class PetWindow(QWidget):
     def _exit_state(self, old_state: PetState) -> None:
         if old_state == PetState.WANDER:
             self._stop_wander()
-            self._trail_positions.clear()
 
     def _apply_state_animation(self, state: PetState) -> None:
         """将 PetState 映射为分层动画指令。"""
@@ -509,7 +505,7 @@ class PetWindow(QWidget):
 
     def _update_trails(self):
         """更新拖尾：每位残影从历史队列取位置和帧，设置窗口透明度。"""
-        if (self._state != PetState.WANDER and not self._is_dragging) or len(self._trail_positions) < 2:
+        if not self._is_dragging or len(self._trail_positions) < 2:
             for g in self._trail_ghosts:
                 g.hide()
             return
