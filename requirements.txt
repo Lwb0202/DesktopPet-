@@ -1,0 +1,4 @@
+PyQt6>=6.5.0
+openai>=1.0
+requests>=2.31           # 百度语音识别/http请求
+winsdk                   # Windows 媒体控件（获取当前播放歌曲）
