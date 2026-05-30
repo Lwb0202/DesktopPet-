@@ -10,7 +10,22 @@ import re
 import datetime
 from collections import Counter
 
-DEFAULT_MEMORY_PATH = os.path.join(os.path.dirname(__file__), "..", "memory.json")
+DEFAULT_MEMORY_PATH = os.path.join(
+    os.environ.get("APPDATA", os.path.expanduser("~")), "DesktopPet", "memory.json"
+)
+
+# ── 应用白名单：只记录有价值的生产力工具 ──
+_MEMORY_WORTHY_APPS = {
+    "VS Code", "Code", "Visual Studio", "PyCharm", "IntelliJ IDEA",
+    "WebStorm", "PhpStorm", "Android Studio", "Eclipse", "Sublime Text",
+    "Notepad++", "Vim", "Neovim", "Xcode",
+    "Photoshop", "Illustrator", "After Effects", "Premiere Pro",
+    "Blender", "Unity", "Unreal Editor", "Figma", "Sketch",
+    "Word", "Excel", "PowerPoint", "WPS",
+    "Terminal", "Windows Terminal", "cmd", "PowerShell",
+    "Git Bash", "GitHub Desktop",
+    "WeChat", "微信",
+}
 
 # ── 可配置的中文关键词提取 ──
 _KEYWORD_PATTERN = re.compile(r"[一-鿿]{2,}")
@@ -77,8 +92,8 @@ class MemoryManager:
         self.save()
 
     def record_app(self, app_name: str) -> None:
-        """记录一次应用使用（来自窗口监听）。"""
-        if not app_name:
+        """记录一次应用使用（来自窗口监听）。只记录生产力工具。"""
+        if not app_name or app_name not in _MEMORY_WORTHY_APPS:
             return
         usage = self.data.setdefault("app_usage", {})
         entry = usage.get(app_name)
@@ -90,12 +105,7 @@ class MemoryManager:
         self.save()
 
     def record_active_time(self, start: str, end: str | None = None) -> None:
-        """记录当日活跃时段。
-
-        Args:
-            start: 开始时间，如 "09:00"
-            end: 结束时间，如 "23:00"（可选，不传则只记录开始）
-        """
+        """记录当日活跃时段。"""
         today = _today()
         daily = self.data.setdefault("daily_active", {})
         entry = daily.get(today, {})
@@ -105,6 +115,17 @@ class MemoryManager:
             entry["end"] = end
         daily[today] = entry
         self.data["last_active"] = _now_iso()
+        self.save()
+
+    def record_session_end(self) -> None:
+        """记录当前会话的结束时间。"""
+        now = datetime.datetime.now()
+        today = _today()
+        daily = self.data.setdefault("daily_active", {})
+        entry = daily.get(today, {})
+        entry["end"] = now.strftime("%H:%M")
+        daily[today] = entry
+        self.data["last_active"] = now.isoformat(timespec="seconds")
         self.save()
 
     def record_chat(self, message: str, reply: str = "") -> None:
@@ -172,6 +193,61 @@ class MemoryManager:
         cutoff = (datetime.date.today() - datetime.timedelta(days=days)).isoformat()
         return sum(1 for r in self.data.get("late_nights", [])
                    if r.get("date", "") >= cutoff)
+
+    def prune(self) -> None:
+        """裁剪过时数据，防止无限膨胀。"""
+        changed = False
+
+        # 熬夜记录：合并相邻（间隔 < 2 小时），保留 90 天
+        late = self.data.get("late_nights", [])
+        if len(late) >= 2:
+            merged = [late[0]]
+            for cur in late[1:]:
+                prev = merged[-1]
+                try:
+                    prev_dt = datetime.datetime.fromisoformat(f"{prev['date']}T{prev['end']}:00")
+                    cur_dt = datetime.datetime.fromisoformat(f"{cur['date']}T{cur['end']}:00")
+                    if (cur_dt - prev_dt).total_seconds() < 7200:
+                        prev["end"] = cur["end"]
+                        prev["apps"] = list(set(prev.get("apps", []) + cur.get("apps", [])))
+                        changed = True
+                        continue
+                except (ValueError, TypeError, KeyError):
+                    pass
+                merged.append(cur)
+            self.data["late_nights"] = merged
+            late = merged
+        if len(late) > 90:
+            self.data["late_nights"] = late[-90:]
+            changed = True
+
+        # 每日活跃：保留最近 180 天
+        daily = self.data.get("daily_active", {})
+        cutoff = (datetime.date.today() - datetime.timedelta(days=180)).isoformat()
+        trimmed = {k: v for k, v in daily.items() if k >= cutoff}
+        if len(trimmed) != len(daily):
+            self.data["daily_active"] = trimmed
+            changed = True
+
+        # 应用使用：清除不在白名单的 + 保留 Top 200
+        usage = self.data.get("app_usage", {})
+        noise = [k for k in usage if k not in _MEMORY_WORTHY_APPS]
+        for k in noise:
+            del usage[k]
+            changed = True
+        if len(usage) > 200:
+            top = sorted(usage.items(), key=lambda kv: kv[1].get("count", 0), reverse=True)
+            self.data["app_usage"] = dict(top[:200])
+            changed = True
+
+        # 聊天关键词：保留最近 100 个
+        kw = self.data.get("chat_keywords", [])
+        if len(kw) > 100:
+            self.data["chat_keywords"] = kw[-100:]
+            changed = True
+
+        if changed:
+            self.save()
 
     def get_context_for_ai(self) -> str:
         """生成一段可供 AI 对话注入的记忆上下文文本。"""

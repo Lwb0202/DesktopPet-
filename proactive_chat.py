@@ -20,11 +20,13 @@ class ProactiveChat:
     """间隔一定时间，主动发起一句 AI 对话并以气泡展示。"""
 
     def __init__(self, pet, memory_manager=None, emotion_manager=None,
-                 companion=None, interval_minutes: int = 20):
+                 companion=None, interval_minutes: int = 20,
+                 companion_days: int = 0):
         self._pet = pet
         self._memory = memory_manager
         self._emotion = emotion_manager
         self._companion = companion
+        self._companion_days = companion_days
         self._interval_ms = interval_minutes * 60_000
         self._enabled = True
 
@@ -98,6 +100,9 @@ class ProactiveChat:
 
     def _do_speak(self):
         ctx_parts = ["你是一只可爱的桌面宠物猫咪，正在主动对主人说一句话。"]
+
+        if self._companion_days > 0:
+            ctx_parts.append(f"你陪伴主人已经 {self._companion_days} 天了。")
 
         now = datetime.datetime.now()
         hour = now.hour

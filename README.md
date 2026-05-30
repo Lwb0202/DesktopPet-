@@ -17,11 +17,11 @@ DesktopPet/
 ├── desktop_marks.py       # 桌面痕迹（脚印/Zzz/涂鸦）
 ├── project_companion.py   # 项目陪伴引擎（全软件追踪+卸载检测）
 ├── music_visualizer.py    # 音乐歌词可视化（SMTC + 网易云歌词）
-├── weather_service.py     # 天气查询（ip-api + wttr.in）
+├── weather_service.py     # 天气查询（设备 GPS 优先 + wttr.in）
 ├── proactive_chat.py      # 宠物主动说话（AI 生成 + 知乎热点）
 ├── settings_dialog.py     # 图形化配置面板（液态玻璃风格）
+├── data_paths.py          # 统一数据目录管理（%APPDATA%）
 ├── tick_manager.py        # 统一 Tick 分发器（单例）
-├── config.json            # 配置文件
 ├── config.example.json    # 配置模板（空 Key，供分发用）
 ├── requirements.txt       # Python 依赖
 ├── memory.json            # 长期记忆（自动生成）
@@ -117,7 +117,7 @@ IDLE → WANDER (15%) / SLEEP (8%) / STARE (8%) / HAPPY (8%) /
 
 | 操作     | 行为                                                                                      |
 | -------- | ----------------------------------------------------------------------------------------- |
-| **拖动** | 按住左键拖动宠物到任意位置，拖动时产生拖尾残影                                             |
+| **拖动** | 按住左键拖动，带拖尾残影；拖到屏幕边缘松手 → 自动扒边探头                         |
 | **单击** | 显示气泡文字（按情绪选取），通知情绪系统记录点击；若处于 SLEEP/STARE/WANDER 则唤醒为 IDLE |
 | **双击** | 打开 AI 聊天对话框（300ms 间隔内两次点击）                                                |
 | **右键** | 弹出菜单：更换宠物 / 退出                                                                 |
@@ -383,12 +383,13 @@ Base / Expression / Overlay 三层 QPainter 合成。内置猫咪通过懒加载
 
 无需打开对话框，宠物定时主动冒出一句话。
 
-- 每 **20 分钟 ± 2 分钟**（可在设置面板调整 15/30/60 分钟）
-- 组装时间、情绪、项目、记忆上下文
+- 每 **15 分钟 ± 2 分钟**（可在设置面板调整 15/20/30/60 分钟）
+- 组装时间、陪伴天数、情绪、项目、记忆上下文
 - 从知乎热榜获取今日热点头条（免费，缓存 30 分钟）
 - 调用 AI 生成 1-2 句自然可爱的话（≤25 字）
 - 以气泡展示，不打开对话框
 - API 不可用时静默跳过
+- 里程碑日（7/30/100/365 天）自动庆祝
 
 ---
 
@@ -415,7 +416,7 @@ Base / Expression / Overlay 三层 QPainter 合成。内置猫咪通过懒加载
 
 ### 16. 天气感知 (`weather_service.py`)
 
-每 30 分钟后台线程查询天气（ip-api + wttr.in，免费无 Key），气泡表达天气心情。
+每 30 分钟后台线程查询天气（优先 Windows 设备 GPS 定位，回退 ip-api + wttr.in），气泡表达天气心情。
 
 ---
 
@@ -486,7 +487,8 @@ main.py
   "ark_api_key": "your-ark-key",
   "auto_start": true,
   "music_glow": true,
-  "proactive_interval": 20
+  "proactive_interval": 15,
+  "first_launch": "2026-05-31"
 }
 ```
 
@@ -501,13 +503,20 @@ main.py
 
 ---
 
-## 数据文件
+## 数据存储
 
-| 文件 | 说明 |
-|------|------|
-| `memory.json` | 长期记忆（应用/关键词/熬夜） |
-| `project_data.json` | 项目陪伴数据 |
-| `pet.log` | 运行日志（5MB × 2 轮转） |
+所有持久化数据统一放在 `%APPDATA%\DesktopPet\`（不随版本更新丢失）：
+
+| 文件 | 说明 | 上限 |
+|------|------|------|
+| `config.json` | 配置（API Key、偏好等） | ~1KB |
+| `memory.json` | 长期记忆（App 使用、熬夜记录） | 自动修剪旧数据 |
+| `project_data.json` | 项目陪伴数据 | 自动清理已卸载/低频软件 |
+| `pet.log` | 运行日志 | 5MB × 2 滚动覆盖 |
+
+**数据修剪策略**：启动时自动裁旧数据 — 熬夜记录保留 90 天、活跃记录保留 180 天、App 白名单 Top 200、极少使用的软件（<3 分钟 + 90 天未开）自动清理。
+
+**卸载**：托盘菜单「打开数据目录」→ 手动删除 `%APPDATA%\DesktopPet\`。
 
 ---
 

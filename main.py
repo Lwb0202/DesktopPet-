@@ -9,13 +9,17 @@ from PyQt6.QtGui import QCursor, QPainter, QColor, QBrush, QPen, QPixmap, QIcon
 from PyQt6.QtWidgets import QApplication, QSystemTrayIcon, QMenu
 
 # ── 日志配置（必须在所有模块导入前设置）──
+_LOG_PATH = os.path.join(
+    os.environ.get("APPDATA", os.path.expanduser("~")), "DesktopPet", "pet.log"
+)
+os.makedirs(os.path.dirname(_LOG_PATH), exist_ok=True)
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(name)-18s] %(message)s",
     datefmt="%H:%M:%S",
     handlers=[
         RotatingFileHandler(
-            os.path.join(os.path.dirname(__file__), "pet.log"),
+            _LOG_PATH,
             encoding="utf-8",
             maxBytes=5 * 1024 * 1024,  # 5MB
             backupCount=2,
@@ -39,17 +43,12 @@ from music_visualizer import MusicVisualizer
 from weather_service import get_weather, get_weather_mood
 from proactive_chat import ProactiveChat
 from settings_dialog import SettingsDialog
+from data_paths import (
+    CONFIG_PATH, CONFIG_EXAMPLE_PATH, RESOURCES_DIR, init_data_dir,
+)
 
-
-CONFIG_PATH = os.path.join(os.path.dirname(__file__), "config.json")
-CONFIG_EXAMPLE_PATH = os.path.join(os.path.dirname(__file__), "config.example.json")
-RESOURCES_DIR = os.path.join(os.path.dirname(__file__), "resources")
-
-# 首次运行：从模板复制配置文件（不携带开发者的真实 key）
-if not os.path.exists(CONFIG_PATH) and os.path.exists(CONFIG_EXAMPLE_PATH):
-    import shutil
-    shutil.copy2(CONFIG_EXAMPLE_PATH, CONFIG_PATH)
-    _log.info("[配置] 已从 config.example.json 生成初始配置")
+# 初始化数据目录 + 迁移旧数据
+init_data_dir()
 
 # ── 应用关键词 → 宠物台词 ──────────────────────────────────────
 
@@ -300,9 +299,28 @@ def _check_first_run_auto_start():
 def main():
     app = QApplication(sys.argv)
 
+    # ── 陪伴天数 ──
+    cfg = load_config()
+    today = datetime.date.today()
+    if "first_launch" not in cfg:
+        cfg["first_launch"] = today.isoformat()
+        save_config(cfg)
+        _log.info(f"首次启动日期: {today}")
+    _first_date = datetime.date.fromisoformat(cfg["first_launch"])
+    _companion_days = (today - _first_date).days
+    _log.info(f"陪伴天数: {_companion_days} 天")
+
+    # 里程碑气泡（4小时延迟，避免和其他启动消息冲突）
+    milestones = {7, 30, 50, 100, 180, 200, 300, 365, 500, 730, 1000}
+    if _companion_days in milestones:
+        QTimer.singleShot(14400_000, lambda: pet.show_bubble(
+            f"我们已经在一起 {_companion_days} 天啦~ 喵~"
+        ))
+
     # ── 长期记忆 ──
     memory = MemoryManager()
     memory.record_active_time(datetime.datetime.now().strftime("%H:%M"))
+    memory.prune()  # 启动时裁剪过期旧数据
 
     # ── 情绪管理 ──
     emotion = EmotionManager()
@@ -456,8 +474,10 @@ def main():
     music_viz.start()
 
     # ── 主动说话 ──
+    proactive_interval = cfg.get("proactive_interval", 20)
     proactive = ProactiveChat(pet, memory_manager=memory, emotion_manager=emotion,
-                              companion=companion, interval_minutes=20)
+                              companion=companion, interval_minutes=proactive_interval,
+                              companion_days=_companion_days)
     proactive.start()
 
     # ── 全屏检测：前台窗口覆盖整个屏幕时自动隐藏宠物 ──
@@ -591,9 +611,29 @@ def main():
     settings_action = tray_menu.addAction("设置...")
     settings_action.triggered.connect(show_settings)
 
+    import subprocess as _subprocess
+
+    def open_data_dir():
+        data_dir = os.path.join(os.environ.get("APPDATA", ""), "DesktopPet")
+        _subprocess.Popen(["explorer", data_dir])
+
+    data_action = tray_menu.addAction("打开数据目录")
+    data_action.triggered.connect(open_data_dir)
+
     tray_menu.addSeparator()
 
     def quit_app():
+        from PyQt6.QtWidgets import QMessageBox
+        data_dir = os.path.join(os.environ.get("APPDATA", ""), "DesktopPet")
+        reply = QMessageBox.question(
+            None, "桌面宠物",
+            f"要退出桌面宠物吗？\n\n你的数据保存在：\n{data_dir}\n\n"
+            "退出后这些数据会保留。\n"
+            "如果要完全卸载，请手动删除上述文件夹。",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
         tray.hide()
         events.stop()
         attachment.stop()
@@ -603,6 +643,7 @@ def main():
         proactive.stop()
         monitor.stop()
         companion._end_session()
+        memory.record_session_end()  # 记录此次会话结束时间
         QApplication.instance().quit()
 
     quit_action = tray_menu.addAction("退出")

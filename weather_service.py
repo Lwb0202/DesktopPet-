@@ -1,7 +1,8 @@
-"""天气服务 — IP 定位 + wttr.in 免费天气查询。"""
+"""天气服务 — Windows 设备定位 + wttr.in 免费天气查询。"""
 
 import json
 import random
+import asyncio
 import logging
 import urllib.request
 import urllib.parse
@@ -14,7 +15,6 @@ def _http_get(url: str, timeout: int = 5) -> dict | str | None:
         req = urllib.request.Request(url, headers={"User-Agent": "DesktopPet/1.0"})
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             data = resp.read().decode()
-            # 尝试解析 JSON
             try:
                 return json.loads(data)
             except json.JSONDecodeError:
@@ -24,8 +24,32 @@ def _http_get(url: str, timeout: int = 5) -> dict | str | None:
         return None
 
 
+def _get_device_location() -> tuple[float, float] | None:
+    """通过 Windows 设备 GPS/定位服务获取经纬度。"""
+    try:
+        from winsdk.windows.devices.geolocation import Geolocator
+        from winsdk.windows.foundation import IAsyncOperation
+
+        async def _get():
+            locator = Geolocator()
+            pos = await locator.get_geoposition_async()
+            coord = pos.coordinate.point.position
+            return coord.latitude, coord.longitude
+
+        return asyncio.run(_get())
+    except Exception as e:
+        _log.debug(f"设备定位失败: {e}")
+        return None
+
+
 def get_location() -> str:
-    """通过 IP 获取城市名。"""
+    """获取位置标识（优先设备 GPS，回退 IP）。"""
+    coords = _get_device_location()
+    if coords:
+        lat, lon = coords
+        return f"{lat:.2f},{lon:.2f}"
+
+    # 回退：IP 定位
     try:
         result = _http_get("http://ip-api.com/json?fields=city")
         if isinstance(result, dict) and result.get("city"):
@@ -45,7 +69,6 @@ def get_weather(city: str | None = None) -> str:
         city = get_location()
 
     try:
-        # wttr.in 免费天气 API
         encoded = urllib.parse.quote(city)
         result = _http_get(
             f"https://wttr.in/{encoded}?format=j1",
@@ -60,7 +83,6 @@ def get_weather(city: str | None = None) -> str:
         humidity = current.get("humidity", "?")
         wind = current.get("windspeedKmph", "?")
 
-        # 天气图标映射
         icon_map = {
             "sunny": "☀️", "clear": "🌙", "partly cloudy": "⛅",
             "cloudy": "☁️", "overcast": "☁️", "mist": "🌫️", "fog": "🌫️",
@@ -75,7 +97,7 @@ def get_weather(city: str | None = None) -> str:
                 icon = v
                 break
 
-        return f"{icon} {city} {desc} {temp}°C 湿度{humidity}% 风力{wind}km/h"
+        return f"{icon} {desc} {temp}°C 湿度{humidity}% 风力{wind}km/h"
     except Exception as e:
         _log.debug(f"天气查询失败: {e}")
         return ""
@@ -92,7 +114,7 @@ def get_weather_short(city: str | None = None) -> str:
             timeout=5,
         )
         if isinstance(result, str) and result.strip():
-            return f"{city} {result.strip()}"
+            return f"{result.strip()}"
     except Exception:
         pass
     return ""
@@ -154,35 +176,23 @@ def get_weather_mood(weather_desc: str) -> tuple[str, str]:
     """
     desc_lower = weather_desc.lower()
 
-    # 温度判断
-    if "°c" in weather_desc or "temp" in str(weather_desc):
-        pass  # handled below
-
-    mapping = []
     for keyword, bubbles in WEATHER_BUBBLES.items():
         if keyword in desc_lower:
-            mapping.append((keyword, bubbles))
-            break
+            msg = random.choice(bubbles)
+            if "sunny" in desc_lower:
+                mood = "happy"
+            elif "rain" in desc_lower:
+                mood = "sad"
+            elif "snow" in desc_lower:
+                mood = "happy"
+            elif "thunder" in desc_lower:
+                mood = "sad"
+            elif "clear" in desc_lower:
+                mood = "sleepy"
+            elif "mist" in desc_lower:
+                mood = "sleepy"
+            else:
+                mood = "neutral"
+            return msg, mood
 
-    if mapping:
-        key, bubbles = mapping[0]
-        msg = random.choice(bubbles)
-
-        if "sunny" in desc_lower:
-            mood = "happy"
-        elif "rain" in desc_lower:
-            mood = "sad"
-        elif "snow" in desc_lower:
-            mood = "happy"
-        elif "thunder" in desc_lower:
-            mood = "sad"
-        elif "clear" in desc_lower:
-            mood = "sleepy"
-        elif "mist" in desc_lower:
-            mood = "sleepy"
-        else:
-            mood = "neutral"
-
-        return msg, mood
-    else:
-        return random.choice(WEATHER_BUBBLES["default"]), "neutral"
+    return random.choice(WEATHER_BUBBLES["default"]), "neutral"

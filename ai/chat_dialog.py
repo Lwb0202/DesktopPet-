@@ -11,7 +11,9 @@ from PyQt6.QtWidgets import (
 )
 
 
-CONFIG_PATH = os.path.join(os.path.dirname(__file__), "..", "config.json")
+CONFIG_PATH = os.path.join(
+    os.environ.get("APPDATA", os.path.expanduser("~")), "DesktopPet", "config.json"
+)
 
 # ── 液态玻璃配色 ──
 GLASS_BG = QColor(255, 255, 255, 165)          # 主体半透白

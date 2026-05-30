@@ -9,7 +9,9 @@ from PyQt6.QtWidgets import (
     QPushButton, QCheckBox, QComboBox,
 )
 
-CONFIG_PATH = os.path.join(os.path.dirname(__file__), "config.json")
+CONFIG_PATH = os.path.join(
+    os.environ.get("APPDATA", os.path.expanduser("~")), "DesktopPet", "config.json"
+)
 
 
 # ── 配色 ──

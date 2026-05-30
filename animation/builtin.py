@@ -364,7 +364,8 @@ def _gen_base_spin(fps: int = 8, frames: int = 8) -> AnimationClip:
         pm.fill(C_TRANSPARENT)
         p = QPainter(pm)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        angle = i / max(1, frames - 1) * 360
+        t = i / max(1, frames - 1) * math.pi * 2
+        angle = (i / max(1, frames - 1)) * 360
         cy = int(SIZE * 0.55)
         p.translate(SIZE // 2, SIZE // 2)
         p.rotate(angle)

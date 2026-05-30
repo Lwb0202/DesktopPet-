@@ -574,7 +574,32 @@ class PetWindow(QWidget):
             # 拖尾清理
             self._trail_positions.clear()
             self._update_trails()
+            # 扒边：拖到屏幕边缘松手时探出半个头
+            self._snap_to_edge()
         super().mouseReleaseEvent(event)
+
+    def _snap_to_edge(self):
+        """拖到屏幕边缘时自动吸附，只露出上半身（像猫扒墙探头）。"""
+        screen = QGuiApplication.screenAt(self.pos())
+        if screen is None:
+            screen = QGuiApplication.primaryScreen()
+        geo = screen.availableGeometry()
+        pw, ph = self.width(), self.height()
+        px, py = self.pos().x(), self.pos().y()
+
+        # 计算到各边的距离
+        dists = {
+            "top":    (py - geo.top(),     px, geo.top() - ph // 3),
+            "bottom": (geo.bottom() - py - ph, px, geo.bottom() - ph + ph // 3),
+            "left":   (px - geo.left(),     geo.left() - pw // 3, py),
+            "right":  (geo.right() - px - pw, geo.right() - pw + pw // 3, py),
+        }
+
+        snap_threshold = 60
+        for edge, (dist, snap_x, snap_y) in dists.items():
+            if 0 <= dist <= snap_threshold:
+                self.move(snap_x, snap_y)
+                break
 
     def _on_single_click(self) -> None:
         self._click_pending = False

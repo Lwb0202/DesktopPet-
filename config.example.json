@@ -3,5 +3,6 @@
   "resources_path": null,
   "ark_api_key": "",
   "auto_start": false,
-  "music_glow": true
+  "music_glow": true,
+  "proactive_interval": 15
 }

@@ -38,8 +38,10 @@ class CompanionConfig:
     UNINSTALL_GRACE_DAYS = 14        # 卸载后保留数据天数，之后自动清理
 
     # ── 存储 ──
-    DATA_FILE = os.path.join(os.path.dirname(__file__),
-                             "project_data.json")
+    DATA_FILE = os.path.join(
+        os.environ.get("APPDATA", os.path.expanduser("~")),
+        "DesktopPet", "project_data.json",
+    )
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -440,6 +442,30 @@ class ProjectCompanion(QObject):
         if to_remove:
             self._save()
 
+    def _prune_rare_software(self):
+        """清理极少使用且长期未打开的软件记录（<3 分钟 + 90 天未打开）。"""
+        today = datetime.date.today()
+        to_remove = []
+        for name, info in self._projects.items():
+            if info.get("uninstalled"):
+                continue  # 已卸载的走另一个清理逻辑
+            total = info.get("total_minutes", 0)
+            last = info.get("last_used", "")
+            try:
+                days_since = (today - datetime.date.fromisoformat(last)).days
+            except (ValueError, TypeError):
+                days_since = 999
+            if total < 3 and days_since > 90:
+                to_remove.append(name)
+
+        for name in to_remove:
+            show = _friendly_name(name)
+            _log.info(f"[陪伴] 清理低频数据: {show} ({self._projects[name].get('total_minutes', 0)}分钟)")
+            del self._projects[name]
+
+        if to_remove:
+            self._save()
+
     # ── 时长累积 ──────────────────────────────────────────────
 
     def _tick_duration(self):
@@ -477,8 +503,9 @@ class ProjectCompanion(QObject):
             if now_sec - self._last_message_time < self._cfg.MESSAGE_COOLDOWN_MINUTES * 60:
                 return
 
-        # 顺便清理过期卸载数据
+        # 顺便清理过期卸载数据 + 低频软件
         self._prune_old_uninstalled()
+        self._prune_rare_software()
 
         msg = self._generate_message()
         if msg:
