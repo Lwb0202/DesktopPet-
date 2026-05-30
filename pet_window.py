@@ -193,6 +193,15 @@ class PetWindow(QWidget):
         self._last_tick_ns = now_ns
         self._ctrl.update(min(dt_ms, 50))  # cap to avoid spiral
 
+        # 用户活跃时 → 立即停止闲逛
+        if self._state == PetState.WANDER and self._wander_active:
+            try:
+                from event_system import get_idle_seconds
+                if get_idle_seconds() < 60:
+                    self._transition_to(PetState.IDLE)
+            except ImportError:
+                pass
+
         self._update_trails()
 
         self.update()
@@ -283,8 +292,19 @@ class PetWindow(QWidget):
 
     def _pick_next_state(self) -> PetState:
         entries = list(TRANSITIONS.get(self._state, [(PetState.IDLE, 1.0)]))
+
+        # 冻结期 → 禁止闲逛
         if self._frozen:
             entries = [(st, w) for st, w in entries if st != PetState.WANDER]
+
+        # 用户活跃时（idle < 60s）→ 禁止闲逛，避免干扰工作
+        if not self._frozen:
+            try:
+                from event_system import get_idle_seconds
+                if get_idle_seconds() < 60:
+                    entries = [(st, w) for st, w in entries if st != PetState.WANDER]
+            except ImportError:
+                pass
 
         if self._sleepy_bias and self._state == PetState.IDLE:
             entries = [

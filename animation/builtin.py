@@ -357,7 +357,7 @@ def _gen_base_jump_rope(fps: int = 12, frames: int = 12) -> AnimationClip:
 
 
 def _gen_base_spin(fps: int = 8, frames: int = 8) -> AnimationClip:
-    """转圈圈：身体旋转。"""
+    """转圈圈：整个猫咪旋转，面部偏移让旋转更明显。"""
     pixmaps: list[QPixmap] = []
     for i in range(frames):
         pm = QPixmap(SIZE, SIZE)
@@ -366,8 +366,10 @@ def _gen_base_spin(fps: int = 8, frames: int = 8) -> AnimationClip:
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         t = i / max(1, frames - 1) * math.pi * 2
         angle = (i / max(1, frames - 1)) * 360
+        # 身体略偏移，离开旋转中心让视觉效果更明显
+        offset_x = int(math.cos(t) * 6)
         cy = int(SIZE * 0.55)
-        p.translate(SIZE // 2, SIZE // 2)
+        p.translate(SIZE // 2 + offset_x, SIZE // 2)
         p.rotate(angle)
         p.translate(-SIZE // 2, -SIZE // 2)
         _draw_body(p, SIZE, cy, ear_t=t)
