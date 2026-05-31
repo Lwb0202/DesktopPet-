@@ -225,50 +225,56 @@ def _toggle_pet(pet: PetWindow):
 
 # ── 开机自启动 ──────────────────────────────────────────────
 
-def _get_startup_vbs_path() -> str:
-    """获取开机启动 VBS 脚本的路径。"""
-    startup_dir = os.path.join(
-        os.environ.get("APPDATA", ""),
-        "Microsoft", "Windows", "Start Menu", "Programs", "Startup",
-    )
-    return os.path.join(startup_dir, "桌面宠物.vbs")
+import winreg
+
+_AUTOSTART_REG_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
+_AUTOSTART_REG_NAME = "DesktopPet"
 
 
 def _set_auto_start(enabled: bool) -> bool:
-    """启用/禁用开机自启动。返回是否成功。"""
-    vbs_path = _get_startup_vbs_path()
-    if enabled:
+    """启用/禁用开机自启动（注册表方式，比 VBS 可靠）。"""
+    try:
         python_exe = sys.executable
         main_py = os.path.abspath(__file__)
-        work_dir = os.path.dirname(main_py)
-        vbs_content = (
-            f'CreateObject("WScript.Shell").Run '
-            f'"""{python_exe}" "{main_py}""", 0, False\n'
-            f"' WorkingDirectory: {work_dir}\n"
+        cmd = f'"{python_exe}" "{main_py}"'
+
+        key = winreg.OpenKey(
+            winreg.HKEY_CURRENT_USER, _AUTOSTART_REG_KEY,
+            0, winreg.KEY_SET_VALUE | winreg.KEY_QUERY_VALUE,
         )
-        try:
-            os.makedirs(os.path.dirname(vbs_path), exist_ok=True)
-            with open(vbs_path, "w", encoding="utf-8") as f:
-                f.write(vbs_content)
-            _log.info(f"开机自启动已启用 → {vbs_path}")
-            return True
-        except OSError as e:
-            _log.warning(f"启用自启动失败: {e}")
-            return False
-    else:
-        try:
-            if os.path.exists(vbs_path):
-                os.remove(vbs_path)
+        if enabled:
+            winreg.SetValueEx(key, _AUTOSTART_REG_NAME, 0,
+                              winreg.REG_SZ, cmd)
+            _log.info(f"开机自启动已启用")
+        else:
+            try:
+                winreg.DeleteValue(key, _AUTOSTART_REG_NAME)
                 _log.info("开机自启动已禁用")
-            return True
-        except OSError as e:
-            _log.warning(f"禁用自启动失败: {e}")
-            return False
+            except FileNotFoundError:
+                pass
+        winreg.CloseKey(key)
+        return True
+    except OSError as e:
+        _log.warning(f"开机自启动操作失败: {e}")
+        return False
 
 
 def _is_auto_start_enabled() -> bool:
     """检查自启动是否已启用。"""
-    return os.path.exists(_get_startup_vbs_path())
+    try:
+        key = winreg.OpenKey(
+            winreg.HKEY_CURRENT_USER, _AUTOSTART_REG_KEY,
+            0, winreg.KEY_READ,
+        )
+        try:
+            winreg.QueryValueEx(key, _AUTOSTART_REG_NAME)
+            return True
+        except FileNotFoundError:
+            return False
+        finally:
+            winreg.CloseKey(key)
+    except OSError:
+        return False
 
 
 def _check_first_run_auto_start():
