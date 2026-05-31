@@ -1,6 +1,9 @@
 import os
 import json
+import logging
 from openai import OpenAI
+
+_log = logging.getLogger("doubao")
 
 CONFIG_PATH = os.path.join(
     os.environ.get("APPDATA", os.path.expanduser("~")), "DesktopPet", "config.json"
@@ -27,9 +30,11 @@ class DoubaoChat:
         self.client = OpenAI(
             base_url="https://ark.cn-beijing.volces.com/api/v3",
             api_key=api_key,
+            timeout=30.0,
         )
         self.model = model
         self.messages = []
+        _log.info("DoubaoChat 初始化完成, model=%s", model)
 
     def _load_key_from_config(self):
         try:
@@ -67,17 +72,20 @@ class DoubaoChat:
 
     MAX_HISTORY = 40  # 保留最近 20 轮对话
 
-    def chat(self, message):
+    def chat(self, message, timeout=25.0):
         """发送消息并返回 AI 回复文本，自动维护对话上下文。"""
         self.messages.append({"role": "user", "content": message})
 
+        _log.info("发送 API 请求, 消息长度=%d, 历史=%d条", len(message), len(self.messages))
         response = self.client.chat.completions.create(
             model=self.model,
             messages=self.messages,
+            timeout=timeout,
         )
 
         reply = response.choices[0].message.content
         self.messages.append({"role": "assistant", "content": reply})
+        _log.info("API 回复, 长度=%d", len(reply) if reply else 0)
 
         # 防止上下文无限增长：保留最近 N 条消息
         if len(self.messages) > self.MAX_HISTORY:

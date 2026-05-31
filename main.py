@@ -529,6 +529,13 @@ def main():
     # ── 自动天气（后台线程查询，避免阻塞动画）──
     import random as _weather_rnd
     import threading
+    from PyQt6.QtCore import QObject, pyqtSignal
+
+    class _WeatherHelper(QObject):
+        _ready = pyqtSignal(str)
+
+    _weather_helper = _WeatherHelper()
+    _weather_helper._ready.connect(lambda msg: pet.show_bubble(msg))
     _weather_checked = False
 
     def _check_weather_auto():
@@ -541,12 +548,8 @@ def main():
             info = get_weather()
             if info:
                 msg, _ = get_weather_mood(info)
-
-                def _show():
-                    pet.show_bubble(msg)
-                    _log.info(f"天气心情: {msg}")
-
-                QTimer.singleShot(0, _show)
+                _log.info(f"天气心情: {msg}")
+                _weather_helper._ready.emit(msg)  # 跨线程信号 → 主线程
 
         threading.Thread(target=_query, daemon=True).start()
 

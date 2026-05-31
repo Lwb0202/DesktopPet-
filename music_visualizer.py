@@ -14,6 +14,7 @@ import ctypes
 from ctypes import wintypes
 from PyQt6.QtCore import (
     Qt, QTimer, QPoint, QRectF, QPropertyAnimation, QEasingCurve,
+    pyqtSignal,
 )
 from PyQt6.QtGui import (
     QPainter, QPainterPath, QFont, QColor, QPen, QBrush,
@@ -40,9 +41,12 @@ FONT_SIZE_BASE = 18
 class MusicVisualizer(QWidget):
     """透明覆盖层：3D 歌词环绕宠物旋转。"""
 
+    _lyrics_ready = pyqtSignal(str)  # 跨线程：后台线程 → 主线程
+
     def __init__(self, pet):
         super().__init__()
         self._pet = pet
+        self._lyrics_ready.connect(self._on_lyrics_fetched)
         self._text = ""
         self._last_title = ""
         self._angle = 0.0
@@ -90,19 +94,18 @@ class MusicVisualizer(QWidget):
     # ── 音乐检测 ──────────────────────────────────────────────
 
     def _check_music(self):
-        """检测音乐 → 拿歌名 + 播放进度 → 查歌词。"""
-        # 记录上次位置（在刷新前），用于检测真正的位置停滞
+        """检测音乐 → 拿歌名 + 播放进度 → 查歌词（后台线程，不阻塞动画）。"""
+        # 记录上次位置
         prev_pos = self._smtc_position
         title = self._get_music_title()
         if not title:
             if self._animating:
-                _log.info("音乐窗口已关闭")
                 self._stop_animation()
             self._smtc_cache_time = 0.0
             self._smtc_cache_result = ""
             return
 
-        # 检测位置停滞：超过 90s 没变化 → 音乐已停止
+        # 检测位置停滞
         if abs(self._smtc_position - prev_pos) < 0.1:
             self._stall_seconds = getattr(self, "_stall_seconds", 0.0) + CHECK_INTERVAL_MS / 1000
         else:
@@ -112,7 +115,7 @@ class MusicVisualizer(QWidget):
             self._stop_animation()
             return
 
-        # 每轮都更新播放进度
+        # 每轮都更新播放进度（无网络调用，直接处理）
         if title == self._last_title:
             tl = getattr(self, "_lyrics_timeline", None)
             if tl:
@@ -123,29 +126,37 @@ class MusicVisualizer(QWidget):
                         idx = i
                 show = [t for _, t in tl[max(0, idx):idx + 1]]
                 new_text = show[0] if show else ""
-                _log.info(f"同步歌词 pos={pos:.1f}s idx={idx}/{len(tl)} → {new_text[:40]}")
                 if new_text != self._text and new_text.strip():
                     self._text = new_text
                     self._generate_colors()
             return
 
+        # 新歌曲 → 先显示歌名，后台线程获取歌词后更新
         self._last_title = title
         clean = self._clean_title(title)
         _log.info(f"检测到歌曲: {clean!r}")
-
-        # 尝试获取真实歌词
-        lyrics = self._fetch_lyrics(clean)
-        if lyrics:
-            self._text = lyrics
-            _log.info(f"获取到歌词 ({len(lyrics)}字)")
-        else:
-            # 获取失败 → 清除旧时间线 + 用歌名代替
-            self._lyrics_timeline = []
-            self._text = clean
-            _log.info("未获取到歌词，显示歌名")
-
+        self._text = clean
         self._generate_colors()
         self._start_animation()
+        import threading
+        threading.Thread(target=self._fetch_lyrics_threaded, args=(clean,), daemon=True).start()
+
+    def _fetch_lyrics_threaded(self, clean: str):
+        """后台线程：获取歌词，主线程更新 UI。"""
+        try:
+            lyrics = self._fetch_lyrics(clean)
+        except Exception:
+            lyrics = ""
+        self._lyrics_ready.emit(lyrics)  # 跨线程信号 → 主线程 slot
+
+    def _on_lyrics_fetched(self, lyrics: str):
+        if lyrics:
+            self._text = lyrics
+            self._generate_colors()
+            _log.info(f"获取到歌词 ({len(lyrics)}字)")
+        else:
+            self._lyrics_timeline = []
+            _log.info("未获取到歌词，显示歌名")
 
     def _fetch_lyrics(self, title: str) -> str:
         """从网易云音乐 API 获取歌词（国内可访问）。"""

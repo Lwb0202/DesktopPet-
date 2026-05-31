@@ -8,7 +8,7 @@ import random
 import time
 import logging
 import datetime
-from PyQt6.QtCore import QTimer
+from PyQt6.QtCore import QTimer, QObject, pyqtSignal
 
 _log = logging.getLogger("proactive")
 
@@ -16,12 +16,15 @@ _log = logging.getLogger("proactive")
 ZHIHU_HOT_URL = "https://www.zhihu.com/api/v3/feed/topstory/hot-lists/total?limit=6"
 
 
-class ProactiveChat:
+class ProactiveChat(QObject):
     """间隔一定时间，主动发起一句 AI 对话并以气泡展示。"""
+
+    _speak_ready = pyqtSignal(str)  # 跨线程：后台线程 → 主线程
 
     def __init__(self, pet, memory_manager=None, emotion_manager=None,
                  companion=None, interval_minutes: int = 20,
                  companion_days: int = 0):
+        super().__init__()
         self._pet = pet
         self._memory = memory_manager
         self._emotion = emotion_manager
@@ -33,6 +36,8 @@ class ProactiveChat:
         self._timer = QTimer()
         self._timer.timeout.connect(self._maybe_speak)
         self._timer.setSingleShot(True)
+
+        self._speak_ready.connect(self._show_bubble)
 
         # 热点缓存
         self._topics_cache: list[str] = []
@@ -156,13 +161,19 @@ class ProactiveChat:
         prompt = "\n".join(ctx_parts)
         _log.info(f"主动说话 prompt 长度: {len(prompt)} 字")
 
-        # 调用 AI
+        # 后台线程调用 AI，避免阻塞动画
+        import threading
+        threading.Thread(target=self._speak_thread, args=(prompt,), daemon=True).start()
+
+    def _speak_thread(self, prompt):
+        """后台线程：调用 AI，主线程展示结果。"""
         from ai.doubao_api import DoubaoChat
         try:
             bot = DoubaoChat()
             reply = bot.chat(prompt)
             bot.clear_context()
         except Exception:
+            _log.exception("主动说话 API 失败")
             return
 
         if reply:
@@ -170,4 +181,8 @@ class ProactiveChat:
             if len(reply) > 40:
                 reply = reply[:40]
             _log.info(f"宠物主动说: {reply!r}")
-            self._pet.show_bubble(reply)
+            self._speak_ready.emit(reply)  # 跨线程信号 → 主线程 slot
+
+    def _show_bubble(self, reply: str):
+        """主线程：显示气泡。"""
+        self._pet.show_bubble(reply)

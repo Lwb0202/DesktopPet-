@@ -94,6 +94,7 @@ class _GlassTitleBar(QWidget):
 class ChatDialog(QWidget):
 
     closed = pyqtSignal()
+    _reply_ready = pyqtSignal(str, str)  # 跨线程：后台线程 → 主线程
 
     def __init__(self, parent=None, memory_manager=None, emotion_manager=None,
                  companion=None):
@@ -113,6 +114,7 @@ class ChatDialog(QWidget):
         self._memory = memory_manager
         self._emotion = emotion_manager
         self._companion = companion
+        self._reply_ready.connect(self._on_chat_reply)
         self._setup_ui()
         self._init_bot()
 
@@ -326,17 +328,32 @@ class ChatDialog(QWidget):
         if prefixes:
             msg = "\n\n".join(prefixes) + f"\n\n用户消息: {text}"
 
+        # 后台线程调用 API，避免阻塞动画
+        import threading
+        threading.Thread(target=self._chat_thread, args=(text, msg), daemon=True).start()
+
+    def _chat_thread(self, text, msg):
+        """后台线程：调用 AI API，主线程更新 UI。"""
+        import logging
+        _log = logging.getLogger("chat")
         try:
             reply = self._bot.chat(msg)
         except Exception as e:
+            _log.exception("AI 聊天请求失败")
             err = str(e).lower()
-            if "connection" in err or "timeout" in err or "unreachable" in err:
+            if any(k in err for k in ("connection", "timeout", "timed out", "unreachable", "connecterror")):
                 reply = "网络好像不太稳定... 检查一下网络再试试吧~"
-            elif "api" in err or "key" in err or "auth" in err:
+            elif any(k in err for k in ("api", "key", "auth", "unauthorized", "forbidden")):
                 reply = "API Key 好像有问题，检查一下 config.json 吧~"
+            elif "not found" in err or "model" in err:
+                reply = "模型好像不可用... 可能需要更新模型名称~"
             else:
                 reply = f"唔... 出了点问题: {e}"
+        finally:
+            self._reply_ready.emit(text, reply)  # 跨线程信号 → 主线程 slot
 
+    def _on_chat_reply(self, text, reply):
+        """主线程：显示 AI 回复。"""
         if self._memory:
             self._memory.record_chat(text, reply)
 
