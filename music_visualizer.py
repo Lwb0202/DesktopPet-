@@ -91,20 +91,18 @@ class MusicVisualizer(QWidget):
 
     def _check_music(self):
         """检测音乐 → 拿歌名 + 播放进度 → 查歌词。"""
+        # 记录上次位置（在刷新前），用于检测真正的位置停滞
+        prev_pos = self._smtc_position
         title = self._get_music_title()
         if not title:
             if self._animating:
                 _log.info("音乐窗口已关闭")
                 self._stop_animation()
-            # 强制清除 SMTC 缓存，避免残留
             self._smtc_cache_time = 0.0
             self._smtc_cache_result = ""
             return
 
         # 检测位置停滞：超过 90s 没变化 → 音乐已停止
-        prev_pos = self._smtc_position
-        self._get_smtc_song()  # 刷新 _smtc_position
-        now = __import__("time").time()
         if abs(self._smtc_position - prev_pos) < 0.1:
             self._stall_seconds = getattr(self, "_stall_seconds", 0.0) + CHECK_INTERVAL_MS / 1000
         else:
@@ -135,17 +133,14 @@ class MusicVisualizer(QWidget):
         clean = self._clean_title(title)
         _log.info(f"检测到歌曲: {clean!r}")
 
-        # 清除旧歌词时间线，避免切歌后匹配到上首歌的歌词
-        self._lyrics_timeline = None
-        self._lyrics_lines = None
-
         # 尝试获取真实歌词
         lyrics = self._fetch_lyrics(clean)
         if lyrics:
             self._text = lyrics
             _log.info(f"获取到歌词 ({len(lyrics)}字)")
         else:
-            self._lyrics_timeline = None
+            # 获取失败 → 清除旧时间线 + 用歌名代替
+            self._lyrics_timeline = []
             self._text = clean
             _log.info("未获取到歌词，显示歌名")
 
