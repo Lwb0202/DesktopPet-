@@ -135,12 +135,17 @@ class MusicVisualizer(QWidget):
         clean = self._clean_title(title)
         _log.info(f"检测到歌曲: {clean!r}")
 
+        # 清除旧歌词时间线，避免切歌后匹配到上首歌的歌词
+        self._lyrics_timeline = None
+        self._lyrics_lines = None
+
         # 尝试获取真实歌词
         lyrics = self._fetch_lyrics(clean)
         if lyrics:
             self._text = lyrics
             _log.info(f"获取到歌词 ({len(lyrics)}字)")
         else:
+            self._lyrics_timeline = None
             self._text = clean
             _log.info("未获取到歌词，显示歌名")
 

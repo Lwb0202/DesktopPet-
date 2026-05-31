@@ -450,7 +450,7 @@ class ProjectCompanion(QObject):
             if info.get("uninstalled"):
                 continue  # 已卸载的走另一个清理逻辑
             total = info.get("total_minutes", 0)
-            last = info.get("last_used", "")
+            last = info.get("last_active_date", "")
             try:
                 days_since = (today - datetime.date.fromisoformat(last)).days
             except (ValueError, TypeError):
