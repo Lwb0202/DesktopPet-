@@ -367,7 +367,7 @@ Base / Expression / Overlay 三层 QPainter 合成。内置猫咪通过懒加载
 
 **视觉效果：**
 
-- 歌词沿弧线单行显示，中间亮大、两侧渐小
+- 歌词沿弧线单行显示，3D 纵深：近大远小、近亮远暗
 - 带时间轴时每句随播放进度自动切换；无时间轴时每 5 秒翻一行
 - 暂停冻结，切歌自动刷新
 - 拖拽进度条后自动检测跳变（差值 >3s），立即重同步  
@@ -409,8 +409,9 @@ Base / Expression / Overlay 三层 QPainter 合成。内置猫咪通过懒加载
 
 - 任务栏右下角猫头图标，双击显隐宠物
 - 右键菜单：显隐 / 更换宠物 / 设置 / 开机自启 / 音乐光环 / 退出
-- 首次运行弹窗询问是否开机自启
+- 首次运行弹窗询问是否开机自启（注册表方式，非 VBS）
 - **全屏检测**：前台窗口覆盖整个屏幕时自动隐藏宠物 + 暂停动画，退出全屏恢复
+- **用户活跃检测**：操作时宠物不移动，停止操作 60s 后恢复闲逛
 
 ---
 
@@ -523,15 +524,12 @@ main.py
 ## 打包分发
 
 ```bash
-pyinstaller --onedir --windowed --name "DesktopPet" \
-  --add-data "config.example.json;." --add-data "resources;resources" \
-  --hidden-import "animation" --hidden-import "ai" --hidden-import "winsdk" \
-  --collect-all "PyQt6" --collect-all "openai" main.py
+# 精简打包（单文件 53MB，已排除未用 Qt 模块）
+.venv\Scripts\pyinstaller DesktopPet.spec --distpath dist3 --workpath build3 --noconfirm
 ```
 
+- 输出 `dist3\DesktopPet.exe`（53MB 单文件）
 - 仅打包 `config.example.json`（空 Key 模板），**不含你的真实 Key**
-- 其他用户首次启动自动复制模板为 `config.json`
-- 输出 `dist/DesktopPet/`，压缩后约 340MB
 
 ---
 

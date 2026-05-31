@@ -478,10 +478,10 @@ class MusicVisualizer(QWidget):
             x = cx + arc_radius * math.cos(angle)
             y = cy - arc_radius * 0.35 * math.sin(angle)
 
-            # 中间亮大，两侧暗小
-            dist = abs(progress - 0.5)
-            alpha = int(250 - dist * 200)
-            size = int(FONT_SIZE_BASE * (1.0 - dist * 0.6))
+            # 3D 纵深感：下方（靠近观察者）大而亮，上方（远离）小而暗
+            depth = 0.5 - 0.5 * math.sin(angle)  # 0=背面 1=正面
+            alpha = int(80 + depth * 170)
+            size = max(8, int(FONT_SIZE_BASE * (0.45 + depth * 0.55)))
 
             if self._colors:
                 color = QColor(self._colors[i % len(self._colors)])
@@ -489,8 +489,8 @@ class MusicVisualizer(QWidget):
                 color = QColor(200, 200, 200)
             color.setAlpha(max(20, alpha))
 
-            font = QFont("Microsoft YaHei", size)
-            font.setBold(dist < 0.1)
+            font = QFont("Microsoft YaHei", size, int(size * 0.8))
+            font.setBold(depth > 0.75)
             p.setFont(font)
             p.setPen(QPen(color))
             # 更宽的绘制区域
